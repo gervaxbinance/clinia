@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clinia — Marcação</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#F5FAFF;font-family:Inter,system-ui,sans-serif;color:#0B2D48;padding:32px 16px;}
+.shell{max-width:500px;margin:0 auto;}
+.logo{font-family:Georgia,serif;font-weight:600;font-size:20px;margin-bottom:20px;display:flex;align-items:center;gap:8px;}
+.dot{width:9px;height:9px;border-radius:50%;background:#5BC8FA;display:inline-block;}
+.card{background:#fff;border:1px solid #D8EAF8;border-radius:12px;padding:22px;margin-bottom:14px;}
+.h2{font-family:Georgia,serif;font-size:20px;margin-bottom:4px;font-weight:500;}
+.sub{font-size:13px;color:#4A6B85;margin-bottom:16px;}
+.lbl{font-size:12px;color:#4A6B85;margin-bottom:5px;display:block;margin-top:4px;}
+input,textarea{width:100%;padding:9px 11px;border-radius:8px;border:1px solid #D8EAF8;font-size:14px;margin-bottom:10px;font-family:inherit;background:#fff;color:#0B2D48;}
+textarea{min-height:68px;resize:none;}
+.btn-p{background:#2F8FE0;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;}
+.btn-p:disabled{opacity:0.5;cursor:not-allowed;}
+.btn-g{background:transparent;color:#0B2D48;border:1px solid #D8EAF8;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;}
+.steps{display:flex;gap:5px;margin-bottom:16px;}
+.sbar{height:4px;border-radius:2px;flex:1;background:#D8EAF8;}
+.sbar.on{background:#2F8FE0;}
+.drow{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;border:1px solid #D8EAF8;border-radius:10px;margin-bottom:8px;cursor:pointer;}
+.drow:hover{background:#EAF6FF;}
+.sgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px;margin-bottom:14px;}
+.slot{padding:9px 0;text-align:center;border-radius:8px;border:1px solid #D8EAF8;font-size:13px;cursor:pointer;background:#EAF6FF;}
+.slot:hover{border-color:#2F8FE0;color:#2F8FE0;}
+.slot.sel{background:#2F8FE0;color:#fff;border-color:#2F8FE0;}
+.err{background:#FCEDE7;color:#9A3412;padding:10px 13px;border-radius:8px;font-size:13px;margin-bottom:12px;}
+.ok{background:#E9F7F0;color:#1E6B4A;padding:16px;border-radius:10px;font-size:14px;}
+.ok .tk{font-size:11px;margin-top:10px;opacity:0.7;word-break:break-all;}
+.rowg{display:flex;gap:9px;margin-top:8px;}
+.muted{font-size:13px;color:#4A6B85;padding:8px 0;}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="logo"><span class="dot"></span>Clinia</div>
+  <div id="root"></div>
+</div>
+<script>
+const { createClient } = supabase;
+const client = createClient(
+  "https://vvbrprbjhtvevwrknnyg.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2YnJwcmJqaHR2ZXZ3cmtubnlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTQ2MjMsImV4cCI6MjA5ODM5MDYyM30.BQi7sbuBxKmaXd6Pls_YeSEisQpMRmpS_1Vb0Z4ADD8"
+);
+
+const DAYS = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+
+let S = {
+  step:0, doctors:[], loading:true, doc:null,
+  date:"", slots:[], loadingSlots:false, time:"",
+  name:"", phone:"", reason:"",
+  submitting:false, err:"", result:null
+};
+
+const root = document.getElementById("root");
+
+function el(tag, cls, text){
+  const e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(text != null) e.textContent = text;
+  return e;
+}
+
+function steps(cur){
+  const d = el("div","steps");
+  for(let i=0;i<4;i++){
+    const b = el("div","sbar"+(i<=cur?" on":""));
+    d.appendChild(b);
+  }
+  return d;
+}
+
+function render(){
+  root.innerHTML = "";
+  const card = el("div","card");
+
+  if(S.step===0){
+    card.appendChild(steps(0));
+    card.appendChild(el("div","h2","Escolhe o médico"));
+    card.appendChild(el("div","sub","O pedido fica pendente até a clínica aprovar."));
+    if(S.loading){
+      card.appendChild(el("div","muted","A carregar médicos..."));
+    } else if(S.doctors.length===0){
+      card.appendChild(el("div","muted","Nenhum médico ativo encontrado. Cria um na tabela doctors com active=true."));
+    } else {
+      S.doctors.forEach(d=>{
+        const row = el("div","drow");
+        const info = el("div");
+        const nm = el("div"); nm.style.cssText="font-weight:500;font-size:14px;"; nm.textContent=d.name;
+        const sp = el("div"); sp.style.cssText="font-size:12px;color:#4A6B85;"; sp.textContent=d.specialty||"Clínica Geral";
+        info.appendChild(nm); info.appendChild(sp);
+        const arr = el("span"); arr.style.cssText="color:#2F8FE0;font-size:13px;"; arr.textContent="Escolher →";
+        row.appendChild(info); row.appendChild(arr);
+        row.onclick=()=>{ S.doc=d; S.step=1; S.date=""; S.slots=[]; S.time=""; render(); };
+        card.appendChild(row);
+      });
+    }
+  }
+
+  else if(S.step===1){
+    card.appendChild(steps(1));
+    card.appendChild(el("div","h2","Data e hora"));
+    card.appendChild(el("div","sub",S.doc.name+" — "+(S.doc.specialty||"Clínica Geral")));
+    card.appendChild(el("label","lbl","Data"));
+    const inp = document.createElement("input");
+    inp.type="date"; inp.value=S.date; inp.min=new Date().toISOString().slice(0,10);
+    inp.onchange=async e=>{
+      S.date=e.target.value; S.time=""; S.slots=[]; S.loadingSlots=true; render();
+      const wd = new Date(S.date+"T00:00:00").getDay();
+      const [schRes, bookedRes] = await Promise.all([
+        client.from("doctor_schedules").select("*").eq("doctor_id", S.doc.id).eq("day_of_week", wd),
+        client.from("appointments").select("requested_time").eq("doctor_id", S.doc.id).eq("requested_date", S.date).in("status",["pending","approved","confirmed","in_progress"])
+      ]);
+      const scheds = schRes.data || [];
+      const booked = bookedRes.data || [];
+      const bset = new Set(booked.map(b=>b.requested_time.slice(0,5)));
+      let slots=[];
+      scheds.forEach(s=>{
+        const[sh,sm]=s.start_time.split(":").map(Number);
+        const[eh,em]=s.end_time.split(":").map(Number);
+        let c=sh*60+sm, end=eh*60+em;
+        while(c<end){
+          const t=String(Math.floor(c/60)).padStart(2,"0")+":"+String(c%60).padStart(2,"0");
+          if(!bset.has(t)) slots.push(t);
+          c+=s.slot_duration_minutes;
+        }
+      });
+      S.slots=slots; S.loadingSlots=false; render();
+    };
+    card.appendChild(inp);
+    if(S.date){
+      if(S.loadingSlots){
+        card.appendChild(el("div","muted","A verificar disponibilidade..."));
+      } else {
+        const dn=DAYS[new Date(S.date+"T00:00:00").getDay()];
+        card.appendChild(el("label","lbl",`${S.slots.length} horário(s) livre(s) — ${dn}`));
+        if(S.slots.length===0){
+          card.appendChild(el("div","muted","Sem horários neste dia. Tenta uma segunda-feira."));
+        } else {
+          const grid=el("div","sgrid");
+          S.slots.forEach(t=>{
+            const s=el("div","slot"+(S.time===t?" sel":""),t);
+            s.onclick=()=>{S.time=t;render();};
+            grid.appendChild(s);
+          });
+          card.appendChild(grid);
+        }
+      }
+    }
+    const row=el("div","rowg");
+    const bk=el("button","btn-g","Voltar"); bk.onclick=()=>{S.step=0;render();};
+    const nx=el("button","btn-p","Continuar"); if(!S.time)nx.disabled=true; nx.onclick=()=>{S.step=2;S.err="";render();};
+    row.appendChild(bk); row.appendChild(nx); card.appendChild(row);
+  }
+
+  else if(S.step===2){
+    card.appendChild(steps(2));
+    card.appendChild(el("div","h2","Os teus dados"));
+    card.appendChild(el("div","sub",`${S.doc.name} — ${S.date} às ${S.time}`));
+
+    const addField=(lbl,ph,val,cb,type)=>{
+      card.appendChild(el("label","lbl",lbl));
+      const i=document.createElement(type==="textarea"?"textarea":"input");
+      if(type!=="textarea") i.type=type||"text";
+      i.placeholder=ph; i.value=val; i.oninput=e=>cb(e.target.value);
+      card.appendChild(i);
+    };
+    addField("Nome completo","O teu nome completo",S.name,v=>S.name=v);
+    addField("Telefone","+258 84 000 0000",S.phone,v=>S.phone=v,"tel");
+    addField("Motivo da consulta (opcional)","Ex: dor de cabeça",S.reason,v=>S.reason=v,"textarea");
+
+    if(S.err) card.appendChild(el("div","err",S.err));
+
+    const row=el("div","rowg");
+    const bk=el("button","btn-g","Voltar"); bk.onclick=()=>{S.step=1;render();};
+    const sb=el("button","btn-p",S.submitting?"A enviar...":"Enviar pedido");
+    sb.disabled=S.submitting;
+    sb.onclick=async()=>{
+      S.err="";
+      if(!S.name.trim()||!S.phone.trim()){S.err="Preenche o nome e o telefone.";render();return;}
+      S.submitting=true; render();
+      try{
+        const {data, error} = await client.from("appointments").insert({
+          clinic_id: S.doc.clinic_id,
+          doctor_id: S.doc.id,
+          patient_name: S.name,
+          patient_phone: S.phone,
+          reason: S.reason,
+          requested_date: S.date,
+          requested_time: S.time+":00"
+        }).select().single();
+        if(error){
+          const m=(error.message||"").toLowerCase();
+          throw new Error(m.includes("duplicate")||m.includes("unique")?"Esse horário acabou de ser ocupado. Escolhe outro.":"Erro: "+error.message);
+        }
+        S.result=data; S.step=3;
+      }catch(e){S.err=e.message;}
+      finally{S.submitting=false;render();}
+    };
+    row.appendChild(bk); row.appendChild(sb); card.appendChild(row);
+  }
+
+  else if(S.step===3&&S.result){
+    card.appendChild(steps(3));
+    const ok=el("div","ok");
+    const t=el("div"); t.style.fontWeight="500"; t.style.marginBottom="6px";
+    t.textContent="Pedido enviado — aguarda aprovação";
+    ok.appendChild(t);
+    ok.appendChild(el("div",null,`${S.doc.name} vai rever o pedido para ${S.date} às ${S.time}. Serás avisado quando for aprovado ou rejeitado.`));
+    ok.appendChild(el("div","tk","Código: "+S.result.access_token));
+    card.appendChild(ok);
+    const btn=el("button","btn-g","Fazer outro pedido"); btn.style.marginTop="14px";
+    btn.onclick=()=>{S={...S,step:0,doc:null,date:"",slots:[],time:"",name:"",phone:"",reason:"",result:null,err:""};render();};
+    card.appendChild(btn);
+  }
+
+  root.appendChild(card);
+}
+
+(async()=>{
+  const {data, error} = await client.from("doctors").select("id,name,specialty,clinic_id").eq("active",true);
+  S.doctors = data||[];
+  S.loading=false;
+  render();
+})();
+</script>
+</body>
+</html>
